@@ -1,27 +1,28 @@
 import streamlit as st
-import torch
+from PIL import Image
 import torchvision as tv
 from pathlib import Path
-from PIL import Image
 from glob import glob
+import torch
 import numpy as np
 
 st.title('Object Detection App')
+st.header('About')
 
 st.markdown("""
 We are going to build an app that allows us to choose an image,
 and threshold and identify what objects are in it.
 
 ### Steps
-* load images
-* load object detector model
-* make predictions
-* display results
+* load images and select one
+* make object predictions on the image
+* set threshold to filter results
+* specify an object to highlight in image
+* overlay object on original image
 
 ---
-""" )
+""")
 
-st.header('Select an image')
 @st.cache(allow_output_mutation=True)
 def load_data():
     filepaths = glob('app/imgs/*.jpeg')
@@ -32,13 +33,10 @@ def load_data():
 
 names, images = load_data()
 
-# Create dropdown to select an image
-name = st.selectbox('', names)
+st.header('Select an image')
+name = st.sidebar.selectbox('Select Image', names)
 idx = names.index(name)
 st.image(images[idx], use_column_width=True)
-
-st.markdown('---')
-st.header('Predict on image')
 
 
 @st.cache(allow_output_mutation=True)
@@ -48,6 +46,8 @@ def predict(image):
     tensor = to_tensor(image)
     pred = model([tensor])[0]
     return pred
+
+pred = predict(images[idx])
 
 labels = [
     '__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
@@ -64,27 +64,18 @@ labels = [
     'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
 ]
 
-pred = predict(images[idx])
-st.write(pred)
-
 label_names = [labels[i] for i in pred['labels']]
 scores = pred['scores'].squeeze().tolist()
 masks = pred['masks']
 
-
-st.markdown('---')
-st.header('Define Threshold')
-
-threshold = st.number_input('prediction threshold', min_value=0.0, max_value=1.0, value=0.5)
+threshold = st.sidebar.number_input('prediction threshold', min_value=0.0, max_value=1.0, value=0.5)
 
 label_names = [ln for ln, score in zip(label_names, scores) if score > threshold]
 masks = [masks[i, :, :] for i, score in enumerate(scores) if score > threshold]
-st.write(label_names)
 
 st.markdown('---')
 st.header('Visualize Results')
-
-mask_name = st.selectbox('select a label', list(set(label_names)))
+mask_name = st.sidebar.selectbox('select a label', list(set(label_names)))
 
 def flatten_masks(masks, label_names, mask_name):
     selected_masks = [mask for ln, mask in zip(label_names, masks) if ln == mask_name]
@@ -92,8 +83,8 @@ def flatten_masks(masks, label_names, mask_name):
     final_mask = final_mask.detach().numpy().transpose(1, 2, 0)
     return final_mask
 
-base_image = np.array(images[idx]) / 255.
 final_mask = flatten_masks(masks, label_names, mask_name)
+base_image = np.array(images[idx]) / 255.
 final_image = np.clip(base_image * 0.5 + final_mask * 0.5, a_min=0, a_max=1)
 
 st.image(final_image, use_column_width=True)
